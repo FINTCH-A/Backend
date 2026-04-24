@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: avante_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: avante
+      POSTGRES_PASSWORD: avante123
+      POSTGRES_DB: avante_fintech
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - avante_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avante -d avante_fintech"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: avante_redis
+    restart: unless-stopped
+    command: redis-server --requirepass redis123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - avante_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avante_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://avante:avante123@postgres:5432/avante_fintech?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redis123
+    ports:
+      - "3000:3000"
+    networks:
+      - avante_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  avante_network:
+    driver: bridge

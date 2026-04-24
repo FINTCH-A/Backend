@@ -1,0 +1,654 @@
+// ============================================================
+//  SCHEMA PRISMA — Plataforma de Préstamos Digitales (Fintech)
+//  ORM    : Prisma v6
+//  DB     : PostgreSQL
+//  Stack  : NestJS + Next.js
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  ENUMS
+// ============================================================
+
+enum UserRole {
+  CUSTOMER
+  ANALYST
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum EmploymentStatus {
+  EMPLOYED
+  SELF_EMPLOYED
+  UNEMPLOYED
+  RETIRED
+  STUDENT
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+  DOMESTIC_PARTNERSHIP
+}
+
+enum HousingType {
+  OWNED
+  RENTED
+  FAMILY
+  OTHER
+}
+
+enum PaymentMethodType {
+  BANK_ACCOUNT
+  DIGITAL_WALLET
+  BANK_TRANSFER
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  PAID
+  DEFAULTED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  PARTIALLY_PAID
+  WAIVED
+}
+
+enum NotificationType {
+  LOAN_APPROVED
+  LOAN_REJECTED
+  PAYMENT_DUE
+  PAYMENT_RECEIVED
+  PAYMENT_OVERDUE
+  ACCOUNT_UPDATE
+  SYSTEM_ALERT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOAN_APPLY
+  LOAN_APPROVE
+  LOAN_REJECT
+  PAYMENT_PROCESS
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum InterestType {
+  FIXED
+  VARIABLE
+}
+
+enum AmortizationType {
+  FRENCH
+  GERMAN
+}
+
+enum LedgerType {
+  DISBURSEMENT
+  REPAYMENT
+  INTEREST
+  PENALTY
+  REVERSAL
+}
+
+// ============================================================
+//  USER & IDENTITY
+// ============================================================
+
+/// Usuarios de la plataforma (clientes, analistas, administradores)
+model User {
+  id          Int        @id @default(autoincrement())
+  firstName   String     @db.VarChar(100)
+  lastName    String     @db.VarChar(100)
+  dni         String     @unique @db.VarChar(20)
+  email       String     @unique @db.VarChar(255)
+  phone       String     @db.VarChar(20)
+  password    String     @db.VarChar(255)
+  dateOfBirth DateTime   @db.Date
+  role        UserRole   @default(CUSTOMER)
+  status      UserStatus @default(PENDING_VERIFICATION)
+
+  // 🔐 Seguridad
+  failedLoginAttempts Int       @default(0)
+  lastLogin           DateTime?
+  lockedUntil         DateTime?
+
+  // ✅ Verificación de contacto
+  emailVerified Boolean @default(false)
+  phoneVerified Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  address       Address?
+  financialInfo FinancialInfo?
+  familyInfo    FamilyInfo?
+  creditScore   CreditScore[]
+  kyc           KYC?
+
+  paymentMethods   PaymentMethod[]
+  loanApplications LoanApplication[]
+  loans            Loan[]
+  payments         Payment[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  ledgerEntries    LedgerEntry[]
+  riskAssessments  RiskAssessment[]
+  refreshTokens    RefreshToken[]
+
+  @@index([email])
+  @@index([dni])
+  @@index([status])
+}
+
+// ============================================================
+//  ADDRESS
+// ============================================================
+
+/// Dirección del usuario
+model Address {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique
+  country       String   @db.VarChar(100)
+  department    String   @db.VarChar(100)
+  city          String   @db.VarChar(100)
+  district      String   @db.VarChar(100)
+  streetAddress String   @db.VarChar(255)
+  postalCode    String?  @db.VarChar(20)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
+}
+
+// ================= KYC =================
+
+model KYC {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @unique
+  documentFront String?
+  documentBack  String?
+  selfie        String?
+  verified      Boolean   @default(false)
+  verifiedAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+// ============================================================
+//  FINANCIAL PROFILE
+// ============================================================
+
+/// Información financiera y laboral del usuario
+model FinancialInfo {
+  id                 Int              @id @default(autoincrement())
+  userId             Int              @unique
+  monthlyIncome      Decimal          @db.Decimal(12, 2)
+  monthlyExpenses    Decimal          @db.Decimal(12, 2)
+  employmentStatus   EmploymentStatus
+  employerName       String?          @db.VarChar(150)
+  employerPhone      String?          @db.VarChar(20)
+  numberOfDependents Int              @default(0)
+  otherIncomeSources Decimal?         @db.Decimal(12, 2)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("financial_infos")
+}
+
+/// Información familiar del usuario
+model FamilyInfo {
+  id               Int           @id @default(autoincrement())
+  userId           Int           @unique
+  maritalStatus    MaritalStatus
+  numberOfChildren Int           @default(0)
+  housingType      HousingType
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("family_infos")
+}
+
+// ============================================================
+//  PAYMENT METHODS
+// ============================================================
+
+/// Métodos de pago registrados por el usuario
+model PaymentMethod {
+  id            Int               @id @default(autoincrement())
+  userId        Int
+  type          PaymentMethodType
+  provider      String            @db.VarChar(100)
+  accountNumber String            @db.VarChar(50)
+  accountHolder String            @db.VarChar(150)
+  isDefault     Boolean           @default(false)
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([userId, accountNumber, provider])
+  @@index([userId])
+  @@map("payment_methods")
+}
+
+// ============================================================
+//  LOAN APPLICATION (pre-aprobación)
+// ============================================================
+
+/// Solicitud de préstamo antes de ser evaluada y aprobada
+model LoanApplication {
+  id              Int               @id @default(autoincrement())
+  userId          Int
+  requestedAmount Decimal           @db.Decimal(12, 2)
+  requestedTerm   Int /// Plazo en meses
+  purpose         String?           @db.VarChar(500)
+  status          ApplicationStatus @default(DRAFT)
+  analystNotes    String?           @db.Text
+  reviewedAt      DateTime?
+  reviewedBy      Int? /// ID del analista
+
+  // Metadata de la solicitud
+  requestLocation RequestLocation?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  loan Loan?
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@map("loan_applications")
+}
+
+/// Metadatos de ubicación y dispositivo de la solicitud
+model RequestLocation {
+  id                Int     @id @default(autoincrement())
+  loanApplicationId Int     @unique
+  latitude          Float?
+  longitude         Float?
+  ipAddress         String? @db.VarChar(45)
+  deviceInfo        String? @db.VarChar(500)
+  userAgent         String? @db.VarChar(500)
+
+  loanApplication LoanApplication @relation(fields: [loanApplicationId], references: [id], onDelete: Cascade)
+
+  @@map("request_locations")
+}
+
+// ============================================================
+//  LOAN
+// ============================================================
+
+/// Préstamo aprobado y activo
+model Loan {
+  id                Int    @id @default(autoincrement())
+  userId            Int
+  loanApplicationId Int    @unique
+  loanCode          String @unique @db.VarChar(30)
+
+  requestedAmount Decimal @db.Decimal(12, 2)
+  approvedAmount  Decimal @db.Decimal(12, 2)
+
+  interestRate Decimal          @db.Decimal(5, 4)
+  interestType InterestType     @default(FIXED)
+  amortization AmortizationType @default(FRENCH)
+
+  totalAmount Decimal @db.Decimal(12, 2)
+  termMonths  Int
+
+  // 💰 Multi-moneda
+  currency String @default("PEN")
+
+  disbursedAt DateTime?
+  dueDate     DateTime?
+
+  status LoanStatus @default(PENDING)
+
+  // 📊 Trazabilidad
+  approvedBy Int?
+  rejectedBy Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user            User            @relation(fields: [userId], references: [id])
+  loanApplication LoanApplication @relation(fields: [loanApplicationId], references: [id])
+
+  installments  Installment[]
+  payments      Payment[]
+  statusHistory LoanStatusHistory[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([loanCode])
+}
+
+// ================= HISTORIAL =================
+
+model LoanStatusHistory {
+  id        Int        @id @default(autoincrement())
+  loanId    Int
+  status    LoanStatus
+  changedBy Int?
+  createdAt DateTime   @default(now())
+
+  loan Loan @relation(fields: [loanId], references: [id])
+}
+
+// ============================================================
+//  INSTALLMENTS (Cuotas)
+// ============================================================
+
+/// Cuotas generadas para un préstamo
+model Installment {
+  id                Int @id @default(autoincrement())
+  loanId            Int
+  installmentNumber Int
+
+  principalAmount Decimal @db.Decimal(12, 2)
+  interestAmount  Decimal @db.Decimal(12, 2)
+  totalAmount     Decimal @db.Decimal(12, 2)
+
+  paidAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  // 💰 Multi-moneda
+  currency String @default("PEN")
+
+  dueDate DateTime  @db.Date
+  paidAt  DateTime?
+
+  status InstallmentStatus @default(PENDING)
+
+  lateFee     Decimal? @db.Decimal(12, 2)
+  daysOverdue Int      @default(0)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  loan     Loan      @relation(fields: [loanId], references: [id])
+  payments Payment[]
+
+  @@unique([loanId, installmentNumber])
+  @@index([loanId, status])
+  @@index([dueDate, status])
+}
+
+// ============================================================
+//  PAYMENTS
+// ============================================================
+
+/// Pagos realizados por el usuario
+model Payment {
+  id              Int  @id @default(autoincrement())
+  userId          Int
+  loanId          Int
+  installmentId   Int?
+  paymentMethodId Int?
+
+  amount Decimal @db.Decimal(12, 2)
+
+  // 💰 Multi-moneda
+  currency String @default("PEN")
+
+  status PaymentStatus @default(PENDING)
+
+  paymentDate DateTime @default(now())
+  reference   String   @unique
+
+  notes String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  user          User           @relation(fields: [userId], references: [id])
+  loan          Loan           @relation(fields: [loanId], references: [id])
+  installment   Installment?   @relation(fields: [installmentId], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+
+  ledgerEntries       LedgerEntry[]
+  externalTransaction ExternalTransaction?
+
+  @@index([userId])
+  @@index([loanId])
+  @@index([paymentDate, status])
+  @@index([reference])
+}
+
+// ============================================================
+//  EXTERNAL TRANSACTIONS (Yape / Plin / Banco)
+// ============================================================
+
+model ExternalTransaction {
+  id         Int           @id @default(autoincrement())
+  paymentId  Int           @unique
+  provider   String
+  externalId String
+  status     PaymentStatus
+  response   Json?
+
+  createdAt DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([externalId])
+  @@index([status])
+}
+
+// ============================================================
+//  CREDIT SCORE (VERSIONADO)
+// ============================================================
+
+/// Evaluación crediticia del usuario (con historial)
+model CreditScore {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  score          Int
+  riskLevel      String    @db.VarChar(20)
+  paymentHistory Decimal?  @db.Decimal(5, 4)
+  debtRatio      Decimal?  @db.Decimal(5, 4)
+  maxLoanAmount  Decimal?  @db.Decimal(12, 2)
+  notes          String?   @db.Text
+  evaluatedAt    DateTime  @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, score])
+  @@map("credit_scores")
+}
+
+// ============================================================
+//  RISK ASSESSMENT (ANTIFRAUDE)
+// ============================================================
+
+model RiskAssessment {
+  id        Int     @id @default(autoincrement())
+  userId    Int
+  score     Decimal @db.Decimal(5, 2)
+  riskLevel String
+  reasons   Json?
+
+  ipAddress  String?
+  deviceInfo String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([score])
+  @@index([createdAt])
+}
+
+// ============================================================
+//  LEDGER CONTABLE (CRÍTICO)
+// ============================================================
+
+model LedgerEntry {
+  id        Int  @id @default(autoincrement())
+  userId    Int
+  loanId    Int?
+  paymentId Int?
+
+  type     LedgerType
+  amount   Decimal    @db.Decimal(12, 2)
+  currency String     @default("PEN")
+
+  reference String?
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id])
+  loan    Loan?    @relation(fields: [loanId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([userId])
+  @@index([loanId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================
+//  WEBHOOKS (INTEGRACIONES REALES)
+// ============================================================
+
+model WebhookEvent {
+  id        Int      @id @default(autoincrement())
+  type      String
+  payload   Json
+  processed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([processed])
+  @@index([createdAt])
+}
+
+// ============================================================
+//  AUDIT LOG
+// ============================================================
+
+/// Registro de auditoría de actividades del sistema
+model AuditLog {
+  id        Int         @id @default(autoincrement())
+  userId    Int?
+  action    AuditAction
+  entity    String      @db.VarChar(100)
+  entityId  Int?
+  oldValues Json?
+  newValues Json?
+  ipAddress String?     @db.VarChar(45)
+  userAgent String?     @db.VarChar(500)
+  createdAt DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+//  NOTIFICATIONS
+// ============================================================
+
+/// Notificaciones al usuario
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int?
+  type      NotificationType
+  title     String           @db.VarChar(200)
+  message   String           @db.Text
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  token     String    @db.Text
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
